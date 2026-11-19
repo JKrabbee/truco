@@ -1,11 +1,16 @@
+from typing import Optional
 import pygame
+from core.campanha import Campanha
+from core.fase import ConfigFase
 from core.match import PartidaTruco
+from core.revolver import Tambor
+from game.layout import layout_mesa
 
 
 class HUD:
     """
-    Componente visual responsável pelo placar tradicional de 24 tentos (Más e Boas),
-    indicador de mão/pé, placa de aposta central e avisos flutuantes sobre o feltro.
+    Componente visual responsável pelo placar de 12 tentos, indicador de mão/pé,
+    placa de aposta (coluna direita), faixa de mensagem, rótulo da fase e câmaras do tambor (R4.5).
     Estética rústica de taberna gaúcha (madeira escura, couro e detalhes em latão envelhecido).
     """
 
@@ -32,11 +37,55 @@ class HUD:
         self.largura = largura
         self.altura = altura
 
-    def desenhar(self, tela: pygame.Surface, partida: PartidaTruco) -> None:
-        """Renderiza o HUD rústico e integrado à mesa."""
+    def desenhar(
+        self,
+        tela: pygame.Surface,
+        partida: PartidaTruco,
+        campanha: Optional[Campanha] = None,
+        config: Optional[ConfigFase] = None,
+        tambor: Optional[Tambor] = None,
+    ) -> None:
+        """Renderiza o HUD rústico e integrado à mesa.
+
+        `config` e `tambor` substituem os da campanha: no encerramento de uma fase vencida,
+        a campanha já avançou, mas o painel continua mostrando a mesa que acabou.
+        """
         self._desenhar_placares(tela, partida)
         self._desenhar_placa_truco_central(tela, partida)
         self._desenhar_aviso_flutuante(tela, partida)
+        if campanha is not None:
+            self._desenhar_fase_tambor(
+                tela, config or campanha.config, tambor or campanha.tambor
+            )
+
+    def _desenhar_fase_tambor(
+        self, tela: pygame.Surface, config: ConfigFase, tambor: Tambor
+    ) -> None:
+        """Rótulo da fase e câmaras já disparadas, sem revelar a bala (R4.5)."""
+        largura = min(240, int(self.largura * 0.23))
+        altura = 46
+        x, y = 20, 96
+        s_fundo = pygame.Surface((largura, altura), pygame.SRCALPHA)
+        s_fundo.fill((30, 26, 22, 215))
+        tela.blit(s_fundo, (x, y))
+        pygame.draw.rect(tela, (95, 75, 55), (x, y, largura, altura), width=1, border_radius=6)
+
+        txt_fase = self.font_badge.render(
+            f"FASE {config.numero} — {config.nome.upper()}", True, (215, 175, 80)
+        )
+        tela.blit(txt_fase, (x + 10, y + 6))
+
+        txt_cam = self.font_sub.render(
+            f"câmaras {tambor.disparadas}/{tambor.camaras}", True, (225, 215, 200)
+        )
+        tela.blit(txt_cam, (x + 10, y + 24))
+        cx = x + 22 + txt_cam.get_width()
+        for i in range(tambor.camaras):
+            centro = (cx + i * 14, y + 31)
+            if i < tambor.disparadas:
+                pygame.draw.circle(tela, (150, 40, 32), centro, 5)
+            else:
+                pygame.draw.circle(tela, (165, 135, 75), centro, 5, width=1)
 
     def _desenhar_placares(self, tela: pygame.Surface, partida: PartidaTruco) -> None:
         largura_placa = min(240, int(self.largura * 0.23))
@@ -114,28 +163,19 @@ class HUD:
         txt_pts = self.font_pts.render(f"{pontos}", True, (230, 195, 95))
         tela.blit(txt_pts, (x + 12, y + 32))
 
-        txt_tentos = self.font_sub.render("/ 24 tentos", True, (160, 150, 140))
+        txt_tentos = self.font_sub.render("/ 12 tentos", True, (160, 150, 140))
         tela.blit(txt_tentos, (x + 50, y + 42))
-
-        # Classificação Tradicional (Más / Boas)
-        classificacao = "Boas" if pontos >= 13 else "Más"
-        pts_fase = pontos - 12 if pontos >= 13 else pontos
-        txt_fase = self.font_sub.render(
-            f"{classificacao} ({pts_fase}/12)",
-            True,
-            (145, 190, 140) if pontos >= 13 else (210, 160, 90),
-        )
-        tela.blit(txt_fase, (x + 125, y + 42))
 
     def _desenhar_placa_truco_central(
         self, tela: pygame.Surface, partida: PartidaTruco
     ) -> None:
-        """Placa central no topo mostrando o valor e status da aposta, posicionada abaixo das cartas do oponente."""
-        largura_placa = 230
-        altura_placa = 46
-        x = (self.largura - largura_placa) // 2
-        # Desce para Y=104 para garantir espaçamento nítido de 16px abaixo das cartas do oponente
-        y = 104
+        """Placa com o valor e o status da aposta, na coluna direita sob a placa do humano.
+
+        Antes ficava no centro do topo e cobria o rótulo "2ª VAZA"; o centro agora é do busto.
+        """
+        rect_placa = layout_mesa(self.largura, self.altura).placa_aposta()
+        largura_placa, altura_placa = rect_placa.size
+        x, y = rect_placa.topleft
 
         # Sombra
         sombra = pygame.Surface((largura_placa, altura_placa), pygame.SRCALPHA)
@@ -176,14 +216,11 @@ class HUD:
     def _desenhar_aviso_flutuante(
         self, tela: pygame.Surface, partida: PartidaTruco
     ) -> None:
-        """Sussurro/banner flutuante semi-transparente elevado para dar respiro à mão do jogador."""
-        largura_banner = min(self.largura - 120, 780)
-        altura_banner = 28
-        x = (self.largura - largura_banner) // 2
-        # Elevado para dar espaço generoso aos botões de ação e às cartas do jogador
-        y = self.altura - 290
+        """Faixa semitransparente com a última mensagem, logo acima da barra de ações."""
+        rect = layout_mesa(self.largura, self.altura).faixa_mensagem()
+        x, y = rect.topleft
+        largura_banner, altura_banner = rect.size
 
-        rect = pygame.Rect(x, y, largura_banner, altura_banner)
         s = pygame.Surface((largura_banner, altura_banner), pygame.SRCALPHA)
         s.fill((10, 20, 15, 150))
         tela.blit(s, (x, y))

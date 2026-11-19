@@ -1,5 +1,6 @@
 import pygame
 from core.card import Carta, Naipe, NOMES_ESPECIAIS
+from game.paths import ASSETS
 
 
 class AssetManager:
@@ -33,16 +34,16 @@ class AssetManager:
         self._cache_cartas: dict[tuple[int, Naipe, bool], pygame.Surface] = {}
         self._superficie_verso: pygame.Surface | None = None
         self._superficie_mesa: pygame.Surface | None = None
+        # False = ainda não procurou assets/mesa.png; None = não existe
+        self._imagem_mesa: pygame.Surface | None | bool = False
 
     def obter_verso_carta(self) -> pygame.Surface:
         """Carrega imagem externa de assets/cards/verso.png ou gera verso em cache."""
         if self._superficie_verso is None:
-            from pathlib import Path
-
             caminhos_verso = [
-                Path("assets/cards/verso.png"),
-                Path("assets/cards/card_back.png"),
-                Path("assets/cards/back.png"),
+                ASSETS / "cards" / "verso.png",
+                ASSETS / "cards" / "card_back.png",
+                ASSETS / "cards" / "back.png",
             ]
             for p in caminhos_verso:
                 if p.is_file():
@@ -121,8 +122,6 @@ class AssetManager:
             return self._cache_cartas[chave]
 
         # Tentar carregar arquivo de imagem externa em pixel art
-        from pathlib import Path
-
         nome_naipe = carta.naipe.name.lower()
         especial = NOMES_ESPECIAIS.get((carta.valor_facial, carta.naipe))
         nomes_tentativa = [
@@ -133,7 +132,7 @@ class AssetManager:
             nomes_tentativa.insert(0, f"{especial.lower().replace(' ', '_')}.png")
 
         for nome_arq in nomes_tentativa:
-            caminho_img = Path("assets/cards") / nome_arq
+            caminho_img = ASSETS / "cards" / nome_arq
             if caminho_img.is_file():
                 try:
                     img = pygame.image.load(str(caminho_img))
@@ -217,25 +216,31 @@ class AssetManager:
         return surf
 
     def obter_mesa_feltro(self, largura: int, altura: int) -> pygame.Surface:
-        """Gera o fundo da mesa de feltro verde com borda de madeira elegante."""
+        """Fundo da mesa: assets/mesa.png escalado, ou feltro escuro com madeira quase preta (R1.1)."""
         if self._superficie_mesa is None or self._superficie_mesa.get_size() != (
             largura,
             altura,
         ):
-            surf = pygame.Surface((largura, altura))
-            # Feltro Verde central
-            surf.fill((22, 102, 60))
+            imagem = self._carregar_imagem_mesa()
+            if imagem is not None:
+                self._superficie_mesa = pygame.transform.smoothscale(
+                    imagem, (largura, altura)
+                )
+                return self._superficie_mesa
 
-            # Borda de madeira
+            surf = pygame.Surface((largura, altura))
+            # Feltro verde escuro: a luz vem da Iluminacao
+            surf.fill((14, 60, 36))
+
+            # Borda de madeira quase preta
             espessura_borda = 22
-            # Moldura externa escura
             pygame.draw.rect(
-                surf, (55, 35, 20), (0, 0, largura, altura), width=espessura_borda
+                surf, (22, 14, 9), (0, 0, largura, altura), width=espessura_borda
             )
-            # Filete dourado da madeira
+            # Filete dourado apagado
             pygame.draw.rect(
                 surf,
-                (185, 145, 60),
+                (120, 95, 45),
                 (
                     espessura_borda - 3,
                     espessura_borda - 3,
@@ -249,7 +254,7 @@ class AssetManager:
             sombra = pygame.Surface((largura, altura), pygame.SRCALPHA)
             pygame.draw.rect(
                 sombra,
-                (0, 0, 0, 45),
+                (0, 0, 0, 60),
                 (
                     espessura_borda,
                     espessura_borda,
@@ -262,8 +267,23 @@ class AssetManager:
 
             # Linha sutil elíptica delimitadora da mesa de feltro
             ret_mesa_interna = pygame.Rect(40, 40, largura - 80, altura - 80)
-            pygame.draw.ellipse(surf, (18, 88, 52), ret_mesa_interna, width=2)
+            pygame.draw.ellipse(surf, (10, 46, 28), ret_mesa_interna, width=2)
 
             self._superficie_mesa = surf
 
         return self._superficie_mesa
+
+    def _carregar_imagem_mesa(self) -> pygame.Surface | None:
+        """Carrega assets/mesa.png uma vez; None se não existir ou falhar."""
+        if self._imagem_mesa is False:
+            self._imagem_mesa = None
+            caminho = ASSETS / "mesa.png"
+            if caminho.is_file():
+                try:
+                    img = pygame.image.load(str(caminho))
+                    if pygame.display.get_surface() is not None:
+                        img = img.convert()
+                    self._imagem_mesa = img
+                except Exception:
+                    self._imagem_mesa = None
+        return self._imagem_mesa
