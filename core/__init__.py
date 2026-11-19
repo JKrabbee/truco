@@ -12,6 +12,13 @@ from core.rules import (
 )
 from core.player import Jogador, JogadorHumano, JogadorBot
 from core.match import PartidaTruco, EstadoPartida
+from core.revolver import Tambor
+from core.fase import ConfigFase, FASES
+from core.roleta import LoteTiros, OrigemTiro
+from core.diabo import JogadorDiabo
+from core.falas import FalasDiabo, GatilhoFala, RitmoFalas
+from core.clima import CurvaLuz, Expressao, HumorDiabo, RitmoTique
+from core.campanha import Campanha, ResultadoCampanha, SaveInvalido
 
 __all__ = [
     "Carta",
@@ -32,4 +39,20 @@ __all__ = [
     "JogadorBot",
     "PartidaTruco",
     "EstadoPartida",
+    "Tambor",
+    "ConfigFase",
+    "FASES",
+    "LoteTiros",
+    "OrigemTiro",
+    "JogadorDiabo",
+    "FalasDiabo",
+    "RitmoFalas",
+    "GatilhoFala",
+    "Campanha",
+    "ResultadoCampanha",
+    "SaveInvalido",
+    "CurvaLuz",
+    "Expressao",
+    "HumorDiabo",
+    "RitmoTique",
 ]

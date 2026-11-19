@@ -8,8 +8,10 @@ FPS = 60
 
 
 def main():
+    # Buffer pequeno: clique e disparo saem no mesmo frame da animação (R11.2).
+    pygame.mixer.pre_init(44100, -16, 2, 512)
     pygame.init()
-    pygame.display.set_caption("Truco Gaudério - O Duelo Cego das Coxilhas")
+    pygame.display.set_caption("Truco contra o Diabo")
 
     # Janela responsiva que suporta redimensionamento e maximização sem tela preta
     tela = pygame.display.set_mode((LARGURA_INICIAL, ALTURA_INICIAL), pygame.RESIZABLE)
@@ -24,6 +26,7 @@ def main():
 
         for evento in pygame.event.get():
             if evento.type == pygame.QUIT:
+                state_manager.ao_fechar()  # salva antes de sair (R12.2)
                 executando = False
             elif evento.type == pygame.VIDEORESIZE:
                 nova_largura = max(800, evento.w)

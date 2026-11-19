@@ -54,5 +54,18 @@ class Carta:
             return f"{nome_base} ({especial})"
         return nome_base
 
+    def para_id(self) -> str:
+        """Id estável da carta (ex.: "7_espadas"), igual ao nome dos PNGs."""
+        return f"{self.valor_facial}_{self.naipe.name.lower()}"
+
+    @classmethod
+    def de_id(cls, id_carta: str) -> "Carta":
+        """Reconstrói a carta a partir do id gerado por para_id."""
+        try:
+            valor, naipe = id_carta.split("_")
+            return cls(int(valor), Naipe[naipe.upper()])
+        except (AttributeError, KeyError, ValueError) as erro:
+            raise ValueError(f"Id de carta inválido: {id_carta!r}") from erro
+
     def __str__(self) -> str:
         return self.nome_completo
