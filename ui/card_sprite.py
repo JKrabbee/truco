@@ -11,6 +11,8 @@ class CardSprite(pygame.sprite.Sprite):
     """
 
     ELEVACAO_HOVER_PX = 14
+    VELOCIDADE_PADRAO = 900.0  # px/s (design §5; 1400 ficava rápido demais para ver)
+    DURACAO_MINIMA_S = 0.25
 
     def __init__(
         self,
@@ -32,11 +34,51 @@ class CardSprite(pygame.sprite.Sprite):
 
         self.destacada: bool = False
         self.hover: bool = False
+        # Seleção por teclado (R7.1); o destaque é o mesmo do hover.
+        self.selecionada: bool = False
 
         self.image = self.asset_manager.obter_sprite_carta(
             self.carta, aberta=self.aberta
         )
         self.rect = self.image.get_rect(topleft=(pos_x, pos_y))
+
+        # Movimento (R8.1): interpolação do centro com ease-out, de origem a alvo.
+        self._origem_mov: tuple[float, float] = (float(self.rect.centerx), float(self.rect.centery))
+        self._alvo_mov: Optional[tuple[float, float]] = None
+        self._duracao_mov: float = 0.0
+        self._tempo_mov: float = 0.0
+
+    @property
+    def em_movimento(self) -> bool:
+        return self._alvo_mov is not None
+
+    def mover_para(
+        self, alvo_xy: tuple[float, float], velocidade: float = VELOCIDADE_PADRAO
+    ) -> None:
+        """Começa a mover o centro da carta até alvo_xy (duração = distância / velocidade)."""
+        self._origem_mov = (float(self.rect.centerx), float(self.rect.centery))
+        self._alvo_mov = (float(alvo_xy[0]), float(alvo_xy[1]))
+        dx = self._alvo_mov[0] - self._origem_mov[0]
+        dy = self._alvo_mov[1] - self._origem_mov[1]
+        distancia = (dx * dx + dy * dy) ** 0.5
+        self._duracao_mov = max(self.DURACAO_MINIMA_S, distancia / max(velocidade, 1.0))
+        self._tempo_mov = 0.0
+
+    def atualizar_movimento(self, dt: float) -> bool:
+        """Avança o movimento; o rect acompanha. Retorna True enquanto ainda se move."""
+        if self._alvo_mov is None:
+            return False
+        self._tempo_mov = min(self._duracao_mov, self._tempo_mov + dt)
+        t = self._tempo_mov / self._duracao_mov
+        k = 1.0 - (1.0 - t) ** 2  # ease-out quadrático
+        ox, oy = self._origem_mov
+        ax, ay = self._alvo_mov
+        self.rect.center = (round(ox + (ax - ox) * k), round(oy + (ay - oy) * k))
+        self.pos_x_base, self.pos_y_base = self.rect.topleft
+        if t >= 1.0:
+            self._alvo_mov = None
+            return False
+        return True
 
     def definir_posicao_base(self, x: int, y: int) -> None:
         self.pos_x_base = x
@@ -54,24 +96,24 @@ class CardSprite(pygame.sprite.Sprite):
         deslocamento_y = -self.ELEVACAO_HOVER_PX if self.destacada else 0
         self.rect.topleft = (self.pos_x_base, self.pos_y_base + deslocamento_y)
 
-    def atualizar(self, pos_mouse: tuple[int, int]) -> None:
-        """Verifica se o mouse está sobre a carta para aplicar efeito de elevação."""
-        if not self.interativa:
-            if self.destacada:
-                self.destacada = False
-                self.atualizar_posicao_rect()
-            return
-
+    def contem_ponto_base(self, pos: tuple[int, int]) -> bool:
+        """True se o ponto está sobre a posição de repouso da carta (sem a elevação)."""
         rect_base = pygame.Rect(
-            self.pos_x_base,
-            self.pos_y_base,
-            self.rect.width,
-            self.rect.height,
+            self.pos_x_base, self.pos_y_base, self.rect.width, self.rect.height
         )
-        esta_sobre = rect_base.collidepoint(pos_mouse)
+        return rect_base.collidepoint(pos)
 
-        if esta_sobre != self.destacada:
-            self.destacada = esta_sobre
+    def atualizar(self, pos_mouse: tuple[int, int], usar_hover: bool = True) -> None:
+        """Eleva a carta se estiver selecionada ou, com usar_hover, sob o mouse."""
+        if not self.interativa:
+            self.hover = False
+            novo = False
+        else:
+            self.hover = self.contem_ponto_base(pos_mouse)
+            novo = self.selecionada or (usar_hover and self.hover)
+
+        if novo != self.destacada:
+            self.destacada = novo
             self.atualizar_posicao_rect()
 
     def verificar_clique(self, pos_mouse: tuple[int, int]) -> bool:
