@@ -34,12 +34,7 @@ Truco Gaudério (baralho espanhol de 40 cartas, manilhas fixas, Envido e Flor) j
    pip install -r requirements.txt
    ```
 
-4. **Gere a música** (fica fora do git; veja [Áudio](#áudio)):
-   ```bash
-   python tools/gerar_audio.py
-   ```
-
-5. **Inicie o jogo** (funciona de qualquer diretório):
+4. **Inicie o jogo** (funciona de qualquer diretório):
    ```bash
    python main.py
    ```
@@ -127,30 +122,15 @@ As teclas só agem quando a ação é válida no momento. Na vez do Diabo e com 
 ## Áudio
 
 - Cada fase tem a sua faixa, com fade na troca. A música baixa na pausa (35%) e na roleta (50%) e corta na bala. Há efeitos para engatilhar, clique vazio, disparo, tique do timer, risada do Diabo e carta na mesa.
-- `python tools/gerar_audio.py` gera tudo só com a biblioteca padrão:
-  - `assets/music/fase{1,2,3}.wav`: drones em loop, já na velocidade de cada fase. Ficam **fora do git** (`assets/music/` no `.gitignore`), então quem clona precisa rodar o script;
-  - `assets/sfx/*.wav`: os efeitos, que já vêm versionados (o script os recria).
-  - Opções: `--so-efeitos`, `--so-musica` e `--saida PASTA`.
-- Para usar uma trilha própria, salve-a como `assets/music/fase{n}.ogg` **já acelerada** para a fase, por exemplo `ffmpeg -i trilha.ogg -filter:a atempo=1.15 fase2.ogg`. O `.ogg` tem prioridade sobre o `.wav`; o mesmo vale para `assets/sfx/{nome}.ogg`. Trilhas com direitos autorais ficam só na tua máquina.
+- A música (`assets/music/fase{1,2,3}.wav`, já na velocidade de cada fase) e os efeitos (`assets/sfx/*.wav`) já vêm no repositório: não há nada a gerar nem a instalar.
+- Para trocar uma faixa, salve-a como `assets/music/fase{n}.ogg` já acelerada para a fase; o `.ogg` tem prioridade sobre o `.wav` (o mesmo vale para `assets/sfx/{nome}.ogg`).
 - Sem mixer, sem placa de som ou sem os arquivos, o jogo roda mudo e sem erro.
 
 ## Sprites
 
 O busto do Diabo, o revólver, a mesa, o verso das cartas e o clarão do tiro são **opcionais**: sem os PNGs, o jogo desenha versões procedurais. Para usar imagens próprias (por exemplo, geradas por IA com fundo chapado magenta, ou preto no clarão), o `tools/preparar_sprites.py` recorta, redimensiona, tira o fundo e grava no caminho que o jogo lê; `--checar` confere os PNGs presentes.
 
-## Testes
-
-Instale as dependências de desenvolvimento e rode o pytest da raiz do projeto:
-
-```bash
-pip install -r requirements-dev.txt
-python -m pytest -q
-```
-
-- `tests/` cobre a lógica de `core/` (tambor, lotes de tiros da tabela acima, campanha, serialização, falas, luz e tique), que não depende de pygame, e também o save (`test_save_manager.py`).
-- `tests/test_audio.py` é a exceção: testa o fallback do áudio com `SDL_AUDIODRIVER=dummy` e pastas temporárias, sem placa de som.
-
-### Smoke test
+## Teste automático
 
 ```bash
 python tools/smoke_test.py
@@ -171,8 +151,7 @@ python tools/preparar_save.py diabo-11
 core/    regras sem pygame: partida, tambor, lotes de tiros, campanha, falas, luz
 game/    estados de tela, roleta, save, áudio, layout e assets
 ui/      sprites e componentes de desenho (cartas, busto, revólver, balão, timer, HUD)
-tools/   gerar_audio.py, preparar_sprites.py, preparar_save.py, smoke_test.py
-tests/   pytest
+tools/   preparar_sprites.py, preparar_save.py, smoke_test.py
 ```
 
 ## Tecnologias

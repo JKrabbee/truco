@@ -19,9 +19,8 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-# Save do jogo e música com direitos autorais (R11.4)
+# Save do jogo
 save/
-assets/music/
 
 # Capturas do smoke test (tools/smoke_test.py --capturas / --assets)
 capturas/
