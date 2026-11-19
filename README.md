@@ -5,9 +5,8 @@ Truco Gaudério (baralho espanhol de 40 cartas, manilhas fixas, Envido e Flor) j
 ## Como executar
 
 ### Pré-requisitos
-- Python 3.10 ou superior (desenvolvido e testado em **3.12**)
+- Python 3.10 ou superior
 - pygame-ce 2.5 ou superior (instalado pelo `requirements.txt`)
-- Nada mais: sem numpy nem ffmpeg
 
 ### Passo a passo
 
@@ -79,13 +78,12 @@ Os lotes de Envido e Flor são executados assim que o canto se resolve. Os de fi
 | Tempo por decisão | sem limite | 15 s | 6 s |
 | O Diabo cita cartas da tua mão | não | às vezes | com frequência, também durante o teu turno |
 | Balas no tambor | 1 | 1 | 2 |
-| Música | 1,0× | 1,15× | 1,3× |
 | Luz | estável | oscila | pisca |
 
 A IA do Diabo **não vê** a tua mão. Quando ele cita uma carta tua, é só intimidação.
 
 ### Timer (fases 2 e 3)
-- A barra à direita da mão encolhe a cada decisão tua (jogar uma carta ou responder a uma aposta). Nos 3 s finais ela fica vermelha, e um tique-taque acelera.
+- A barra à direita da mão encolhe a cada decisão tua (jogar uma carta ou responder a uma aposta). Nos 3 s finais ela fica vermelha.
 - **Tempo esgotado:** com uma aposta pendente, o jogo responde "Não quero" por você (e isso gera o lote de castigo); na vez de jogar, ele joga a tua **carta mais fraca**.
 - O timer para na roleta, na pausa, durante o voo da carta e enquanto o Diabo digita uma provocação no início da mão ou num canto dele.
 - Ao reabrir um save, o timer volta com o tempo que restava (no mínimo 2 s).
@@ -119,42 +117,20 @@ As teclas só agem quando a ação é válida no momento. Na vez do Diabo e com 
 - Um save corrompido é descartado com um aviso no menu, sem derrubar o jogo.
 - A escrita é atômica (arquivo `.tmp` + `os.replace`). A pasta `save/` está no `.gitignore`.
 
-## Áudio
-
-- Cada fase tem a sua faixa, com fade na troca. A música baixa na pausa (35%) e na roleta (50%) e corta na bala. Há efeitos para engatilhar, clique vazio, disparo, tique do timer, risada do Diabo e carta na mesa.
-- A música (`assets/music/fase{1,2,3}.wav`, já na velocidade de cada fase) e os efeitos (`assets/sfx/*.wav`) já vêm no repositório: não há nada a gerar nem a instalar.
-- Para trocar uma faixa, salve-a como `assets/music/fase{n}.ogg` já acelerada para a fase; o `.ogg` tem prioridade sobre o `.wav` (o mesmo vale para `assets/sfx/{nome}.ogg`).
-- Sem mixer, sem placa de som ou sem os arquivos, o jogo roda mudo e sem erro.
-
 ## Sprites
 
 O busto do Diabo, o revólver, a mesa, o verso das cartas e o clarão do tiro são **opcionais**: sem os PNGs, o jogo desenha versões procedurais. Para usar imagens próprias (por exemplo, geradas por IA com fundo chapado magenta, ou preto no clarão), o `tools/preparar_sprites.py` recorta, redimensiona, tira o fundo e grava no caminho que o jogo lê; `--checar` confere os PNGs presentes.
-
-## Teste automático
-
-```bash
-python tools/smoke_test.py
-```
-
-Joga campanhas inteiras sem janela (`SDL_VIDEODRIVER=dummy`, `SDL_AUDIODRIVER=dummy`), só com eventos de teclado, e confere cada item automatizável do checklist de teste: colisão, puxadas, desfechos, timer, fechar e reabrir em cada modo, save corrompido, sobreposição em 800×600 e 1024×720, luz, expressões e sons (por espião). O save e o áudio vão para uma pasta temporária, então o teu `save/` não é tocado. Opções: `--campanhas N`, `--semente S`, `--capturas PASTA` (salva capturas de tela) e `--assets` (valida os sprites em `assets/`).
-
-O que só se confere a olho ou ouvido (aparência, legibilidade e o som de verdade) continua manual. Para chegar rápido a situações raras (Falta Envido, Diabo a 11, última câmara), `tools/preparar_save.py` grava um save pronto:
-
-```bash
-python tools/preparar_save.py --listar
-python tools/preparar_save.py diabo-11
-```
 
 ## Estrutura
 
 ```text
 core/    regras sem pygame: partida, tambor, lotes de tiros, campanha, falas, luz
-game/    estados de tela, roleta, save, áudio, layout e assets
+game/    estados de tela, roleta, save, layout e assets
 ui/      sprites e componentes de desenho (cartas, busto, revólver, balão, timer, HUD)
-tools/   preparar_sprites.py, preparar_save.py, smoke_test.py
+tools/   preparar_sprites.py, preparar_save.py
 ```
 
 ## Tecnologias
 
-- [Python](https://www.python.org/) 3.10+ (testado em 3.12)
+- [Python](https://www.python.org/) 3.10+
 - [pygame-ce](https://pyga.me/)
