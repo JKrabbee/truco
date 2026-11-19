@@ -1,15 +1,28 @@
 from enum import Enum
-from typing import Optional, TYPE_CHECKING
+from typing import Any, Callable, Optional, TYPE_CHECKING
 from core.card import Carta, Naipe
 
 if TYPE_CHECKING:
     from core.player import Jogador
+
+# Conversores usados na serialização: jogador → id ("j1"/"j2") e id → jogador.
+IdDeJogador = Callable[[Optional["Jogador"]], Optional[str]]
+JogadorDeId = Callable[[Optional[str]], Optional["Jogador"]]
 
 
 class TipoEnvido(Enum):
     ENVIDO = "Envido"
     REAL_ENVIDO = "Real Envido"
     FALTA_ENVIDO = "Falta Envido"
+
+    @property
+    def proximo_nivel(self) -> Optional["TipoEnvido"]:
+        """Aumento padrão: Envido → Real Envido → Falta Envido → nenhum."""
+        if self == TipoEnvido.ENVIDO:
+            return TipoEnvido.REAL_ENVIDO
+        if self == TipoEnvido.REAL_ENVIDO:
+            return TipoEnvido.FALTA_ENVIDO
+        return None
 
 
 class TipoTruco(Enum):
@@ -133,6 +146,29 @@ class Vaza:
 
         return self.vencedor
 
+    def para_dict(self, id_de: IdDeJogador) -> dict[str, Any]:
+        """Serializa a vaza com jogadores referenciados por id."""
+        return {
+            "cartas": [[id_de(j), c.para_id()] for j, c in self.cartas_jogadas],
+            "vencedor": id_de(self.vencedor),
+            "empate": self.empate,
+        }
+
+    @classmethod
+    def de_dict(cls, dados: dict[str, Any], indice: int, jogador_de: JogadorDeId) -> "Vaza":
+        """Reconstrói a vaza a partir de para_dict."""
+        vaza = cls(indice)
+        if len(dados["cartas"]) > 2:
+            raise ValueError("Vaza com mais de 2 cartas.")
+        for id_jogador, id_carta in dados["cartas"]:
+            jogador = jogador_de(id_jogador)
+            if jogador is None:
+                raise ValueError("Carta de vaza sem jogador.")
+            vaza.adicionar_jogada(jogador, Carta.de_id(id_carta))
+        vaza.vencedor = jogador_de(dados["vencedor"])
+        vaza.empate = bool(dados["empate"])
+        return vaza
+
 
 class Mao:
     """Gerencia a disputa de melhor de 3 vazas e a regra do Canguçu."""
@@ -152,6 +188,36 @@ class Mao:
 
     def avancar_vaza(self) -> None:
         self.indice_vaza_atual += 1
+
+    def para_dict(self, id_de: IdDeJogador) -> dict[str, Any]:
+        """Serializa a mão e suas 3 vazas."""
+        return {
+            "jogador_mao": id_de(self.jogador_mao),
+            "jogador_pe": id_de(self.jogador_pe),
+            "indice_vaza_atual": self.indice_vaza_atual,
+            "vencedor": id_de(self.vencedor),
+            "vazas": [v.para_dict(id_de) for v in self.vazas],
+        }
+
+    @classmethod
+    def de_dict(cls, dados: dict[str, Any], jogador_de: JogadorDeId) -> "Mao":
+        """Reconstrói a mão a partir de para_dict."""
+        jogador_mao = jogador_de(dados["jogador_mao"])
+        jogador_pe = jogador_de(dados["jogador_pe"])
+        if jogador_mao is None or jogador_pe is None or jogador_mao is jogador_pe:
+            raise ValueError("Mão com jogadores inválidos.")
+        mao = cls(jogador_mao, jogador_pe)
+        if len(dados["vazas"]) != 3:
+            raise ValueError("A mão deve ter 3 vazas.")
+        mao.vazas = [
+            Vaza.de_dict(v, i + 1, jogador_de) for i, v in enumerate(dados["vazas"])
+        ]
+        indice = int(dados["indice_vaza_atual"])
+        if not 0 <= indice <= 3:
+            raise ValueError(f"Índice de vaza inválido: {indice}")
+        mao.indice_vaza_atual = indice
+        mao.vencedor = jogador_de(dados["vencedor"])
+        return mao
 
     def verificar_vencedor(self) -> Optional["Jogador"]:
         """
