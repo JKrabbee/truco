@@ -33,6 +33,17 @@ class Baralho:
             )
         return [self.comprar_carta() for _ in range(quantidade)]
 
+    def para_lista(self) -> list[str]:
+        """Serializa as cartas restantes como ids, na ordem de compra."""
+        return [c.para_id() for c in self.cartas]
+
+    @classmethod
+    def de_lista(cls, ids: list[str]) -> "Baralho":
+        """Reconstrói o baralho com as cartas restantes salvas."""
+        baralho = cls()
+        baralho.cartas = [Carta.de_id(i) for i in ids]
+        return baralho
+
     def __len__(self) -> int:
         return len(self.cartas)
 

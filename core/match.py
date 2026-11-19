@@ -3,6 +3,7 @@ from typing import Optional, Any
 from core.card import Carta
 from core.deck import Baralho
 from core.player import Jogador, JogadorHumano, JogadorBot
+from core.roleta import LoteTiros, OrigemTiro
 from core.rules import (
     Mao,
     Vaza,
@@ -27,11 +28,12 @@ class EstadoPartida(Enum):
 
 class PartidaTruco:
     """
-    Gerenciador da partida de Truco Gaudério (1v1 até 24 tentos).
-    Controla rodadas, alternância do 'mão', apostas e placar.
+    Gerenciador da partida de Truco Gaudério (1v1 até 12 tentos).
+    Controla rodadas, alternância do 'mão', apostas, placar
+    e a fila de lotes de tiros gerados pelas apostas.
     """
 
-    TENTOS_VITORIA = 24
+    TENTOS_VITORIA = 12
 
     def __init__(self, jogador1: Jogador, jogador2: Jogador):
         self.jogador1 = jogador1
@@ -70,6 +72,9 @@ class PartidaTruco:
         self.ultima_mensagem: str = "Partida iniciada."
         self.vencedor_partida: Optional[Jogador] = None
 
+        # Lotes de tiros gerados pelas ações, consumidos pela Campanha
+        self.lotes_pendentes: list[LoteTiros] = []
+
     @property
     def jogador_mao(self) -> Jogador:
         """Retorna quem é o 'mão' na rodada atual."""
@@ -106,15 +111,29 @@ class PartidaTruco:
             self.estado_atual = EstadoPartida.FIM_DE_JOGO
             self.ultima_mensagem = f"Fim de jogo! {self.jogador2.nome} venceu a peleja!"
 
-    def esta_nas_boas(self, jogador: Jogador) -> bool:
-        """No Truco Gaudério, de 1 a 12 são as 'Más' e de 13 a 24 são as 'Boas'."""
-        return self.pontuacao_de(jogador) >= 13
-
     def formatar_placar_tradicional(self, jogador: Jogador) -> str:
-        pts = self.pontuacao_de(jogador)
-        if pts <= 12:
-            return f"Más ({pts}/12)"
-        return f"Boas ({pts - 12}/12)"
+        """Placar do jogador no formato "x/12"."""
+        return f"{self.pontuacao_de(jogador)}/{self.TENTOS_VITORIA}"
+
+    # ==========================
+    # LOTES DE TIROS
+    # ==========================
+    def _emitir_lote(
+        self,
+        atirador: Jogador,
+        alvo: Jogador,
+        puxadas: Optional[int],
+        origem: OrigemTiro,
+    ) -> None:
+        """Enfileira um lote de tiros, exceto se a partida já foi decidida por tentos."""
+        if self.vencedor_partida is not None:  # R3.4: vitória por tentos prevalece
+            return
+        self.lotes_pendentes.append(LoteTiros(atirador, alvo, puxadas, origem))
+
+    def consumir_lotes(self) -> list[LoteTiros]:
+        """Retorna e esvazia a fila de lotes pendentes."""
+        lotes, self.lotes_pendentes = self.lotes_pendentes, []
+        return lotes
 
     def iniciar_nova_rodada(self) -> None:
         """Distribui as cartas e prepara a nova mão."""
@@ -150,6 +169,7 @@ class PartidaTruco:
 
         self.jogador_vez = self.jogador_mao
         self.primeiro_a_jogar_na_vaza = self.jogador_mao
+        self.lotes_pendentes = []
 
         self.estado_atual = EstadoPartida.AGUARDANDO_ENVIDO
         self.ultima_mensagem = (
@@ -202,6 +222,7 @@ class PartidaTruco:
                 pts_venc = self.jogador_mao.pontos_flor
 
             self.adicionar_pontos(vencedor, 6)
+            self._emitir_lote(vencedor, self.oponente_de(vencedor), 3, OrigemTiro.FLOR)
             self.ultima_mensagem = (
                 f"Contraflor! {jogador.nome} ({pts_jog}) vs {oponente.nome} ({pts_op}). "
                 f"{vencedor.nome} ganha 6 tentos com {pts_venc} pontos de flor!"
@@ -209,6 +230,7 @@ class PartidaTruco:
         else:
             pts = jogador.pontos_flor
             self.adicionar_pontos(jogador, 3)
+            self._emitir_lote(jogador, oponente, 3, OrigemTiro.FLOR)
             self.ultima_mensagem = (
                 f"Flor! {jogador.nome} cantou Flor ({pts} pts) e levou 3 tentos!"
             )
@@ -303,6 +325,13 @@ class PartidaTruco:
                 p1, self.jogador1, p2, self.jogador2, self.jogador_mao
             )
             self.adicionar_pontos(vencedor, self.valor_envido_acumulado)
+            eh_falta = self.aposta_envido_atual == TipoEnvido.FALTA_ENVIDO
+            self._emitir_lote(
+                vencedor,
+                self.oponente_de(vencedor),
+                None if eh_falta else self.valor_envido_acumulado,
+                OrigemTiro.FALTA_ENVIDO if eh_falta else OrigemTiro.ENVIDO,
+            )
             self.ultima_mensagem = (
                 f"Envido aceito! {self.jogador1.nome}: {p1} pts x {self.jogador2.nome}: {p2} pts. "
                 f"{vencedor.nome} vence e leva {self.valor_envido_acumulado} tento(s)!"
@@ -316,6 +345,7 @@ class PartidaTruco:
         elif resposta == RespostaAposta.NAO_QUERO:
             self.envido_disputado = True
             self.adicionar_pontos(quem_pediu, self.valor_recusa_envido)
+            self._emitir_lote(quem_responde, quem_responde, 1, OrigemTiro.RECUSA_ENVIDO)
             self.ultima_mensagem = (
                 f"{quem_responde.nome} não quis o envido. "
                 f"{quem_pediu.nome} leva {self.valor_recusa_envido} tento(s)!"
@@ -327,7 +357,13 @@ class PartidaTruco:
             )
 
         elif resposta == RespostaAposta.AUMENTAR:
-            if aumento is not None:
+            # Sem aumento explícito, usa o padrão: Envido → Real → Falta
+            if aumento is None:
+                aumento = self.aposta_envido_atual.proximo_nivel
+            if aumento is None:
+                # Já na Falta Envido: não há como aumentar, trata como Quero
+                self.responder_envido(RespostaAposta.QUERO)
+            else:
                 self.cantar_envido(quem_responde, aumento)
 
     # ==========================
@@ -394,6 +430,9 @@ class PartidaTruco:
                 1 if self.nivel_truco == TipoTruco.TRUCO else self.valor_truco_atual
             )
             self.adicionar_pontos(quem_pediu, valor_ganho)
+            self._emitir_lote(
+                jogador_resposta, jogador_resposta, 1, OrigemTiro.RECUSA_TRUCO
+            )
             self.ultima_mensagem = f"{jogador_resposta.nome} correu do truco. {quem_pediu.nome} leva {valor_ganho} tento(s)!"
             self.finalizar_mao()
 
@@ -454,6 +493,10 @@ class PartidaTruco:
             vencedor_mao = self.mao_atual.verificar_vencedor()
             if vencedor_mao is not None:
                 self.adicionar_pontos(vencedor_mao, self.valor_truco_atual)
+                perdedor = self.oponente_de(vencedor_mao)
+                self._emitir_lote(
+                    perdedor, perdedor, self.valor_truco_atual, OrigemTiro.MAO_PERDIDA
+                )
                 self.ultima_mensagem = f"{vencedor_mao.nome} levou a rodada e ganhou {self.valor_truco_atual} tento(s)!"
                 self.finalizar_mao()
             else:
@@ -468,6 +511,7 @@ class PartidaTruco:
         """Jogador desiste da mão atual (vai ao baralho)."""
         oponente = self.oponente_de(jogador)
         self.adicionar_pontos(oponente, self.valor_truco_atual)
+        self._emitir_lote(jogador, jogador, self.valor_truco_atual, OrigemTiro.BARALHO)
         self.ultima_mensagem = f"{jogador.nome} foi ao baralho. {oponente.nome} ganhou {self.valor_truco_atual} tento(s)!"
         self.finalizar_mao()
 
@@ -508,3 +552,105 @@ class PartidaTruco:
             "envido_disponivel": not self.envido_disputado and not self.flor_ocorrida,
             "sou_mao": jogador == self.jogador_mao,
         }
+
+    # ==========================
+    # SERIALIZAÇÃO (SAVE)
+    # ==========================
+    def _id(self, jogador: Optional[Jogador]) -> Optional[str]:
+        """Converte o jogador em "j1"/"j2" (ou None)."""
+        if jogador is None:
+            return None
+        if jogador is self.jogador1:
+            return "j1"
+        if jogador is self.jogador2:
+            return "j2"
+        raise ValueError(f"Jogador desconhecido: {jogador!r}")
+
+    def _jogador(self, id_jogador: Optional[str]) -> Optional[Jogador]:
+        """Converte "j1"/"j2" (ou None) no jogador correspondente."""
+        if id_jogador is None:
+            return None
+        if id_jogador == "j1":
+            return self.jogador1
+        if id_jogador == "j2":
+            return self.jogador2
+        raise ValueError(f"Id de jogador inválido: {id_jogador!r}")
+
+    def para_dict(self) -> dict[str, Any]:
+        """Serializa o estado completo da partida (sem a fila de lotes)."""
+        return {
+            "pontos_jogador1": self.pontos_jogador1,
+            "pontos_jogador2": self.pontos_jogador2,
+            "numero_rodada": self.numero_rodada,
+            "indice_mao": self.indice_mao,
+            "estado_atual": self.estado_atual.name,
+            "nivel_truco": self.nivel_truco.name if self.nivel_truco else None,
+            "valor_truco_atual": self.valor_truco_atual,
+            "quem_pediu_truco": self._id(self.quem_pediu_truco),
+            "quem_deve_responder_truco": self._id(self.quem_deve_responder_truco),
+            "envido_disputado": self.envido_disputado,
+            "flor_ocorrida": self.flor_ocorrida,
+            "aposta_envido_atual": (
+                self.aposta_envido_atual.name if self.aposta_envido_atual else None
+            ),
+            "valor_envido_acumulado": self.valor_envido_acumulado,
+            "valor_recusa_envido": self.valor_recusa_envido,
+            "quem_pediu_envido": self._id(self.quem_pediu_envido),
+            "quem_deve_responder_envido": self._id(self.quem_deve_responder_envido),
+            "jogador_vez": self._id(self.jogador_vez),
+            "primeiro_a_jogar_na_vaza": self._id(self.primeiro_a_jogar_na_vaza),
+            "ultima_mensagem": self.ultima_mensagem,
+            "vencedor_partida": self._id(self.vencedor_partida),
+            "baralho": self.baralho.para_lista(),
+            "mao_j1": [c.para_id() for c in self.jogador1.mao],
+            "mao_j2": [c.para_id() for c in self.jogador2.mao],
+            "mao_atual": self.mao_atual.para_dict(self._id) if self.mao_atual else None,
+        }
+
+    @classmethod
+    def de_dict(
+        cls, dados: dict[str, Any], jogador1: Jogador, jogador2: Jogador
+    ) -> "PartidaTruco":
+        """Reconstrói a partida salva; levanta KeyError/ValueError se os dados forem inválidos."""
+        p = cls(jogador1, jogador2)
+        p.pontos_jogador1 = jogador1.tentos = int(dados["pontos_jogador1"])
+        p.pontos_jogador2 = jogador2.tentos = int(dados["pontos_jogador2"])
+        p.numero_rodada = int(dados["numero_rodada"])
+        p.indice_mao = int(dados["indice_mao"])
+        if p.indice_mao not in (0, 1):
+            raise ValueError(f"indice_mao inválido: {p.indice_mao}")
+        p.estado_atual = EstadoPartida[dados["estado_atual"]]
+
+        nivel = dados["nivel_truco"]
+        p.nivel_truco = TipoTruco[nivel] if nivel is not None else None
+        p.valor_truco_atual = int(dados["valor_truco_atual"])
+        p.quem_pediu_truco = p._jogador(dados["quem_pediu_truco"])
+        p.quem_deve_responder_truco = p._jogador(dados["quem_deve_responder_truco"])
+
+        p.envido_disputado = bool(dados["envido_disputado"])
+        p.flor_ocorrida = bool(dados["flor_ocorrida"])
+        aposta = dados["aposta_envido_atual"]
+        p.aposta_envido_atual = TipoEnvido[aposta] if aposta is not None else None
+        p.valor_envido_acumulado = int(dados["valor_envido_acumulado"])
+        p.valor_recusa_envido = int(dados["valor_recusa_envido"])
+        p.quem_pediu_envido = p._jogador(dados["quem_pediu_envido"])
+        p.quem_deve_responder_envido = p._jogador(dados["quem_deve_responder_envido"])
+
+        p.jogador_vez = p._jogador(dados["jogador_vez"])
+        p.primeiro_a_jogar_na_vaza = p._jogador(dados["primeiro_a_jogar_na_vaza"])
+        p.ultima_mensagem = str(dados["ultima_mensagem"])
+        p.vencedor_partida = p._jogador(dados["vencedor_partida"])
+
+        p.baralho = Baralho.de_lista(dados["baralho"])
+        jogador1.receber_cartas([Carta.de_id(i) for i in dados["mao_j1"]])
+        jogador2.receber_cartas([Carta.de_id(i) for i in dados["mao_j2"]])
+        mao = dados["mao_atual"]
+        p.mao_atual = Mao.de_dict(mao, p._jogador) if mao is not None else None
+
+        # Cada carta só pode estar em um lugar (baralho, mãos ou mesa)
+        todas = list(p.baralho.cartas) + jogador1.mao + jogador2.mao
+        if p.mao_atual is not None:
+            todas += [c for v in p.mao_atual.vazas for _, c in v.cartas_jogadas]
+        if len(todas) != len(set(todas)):
+            raise ValueError("Carta repetida no save.")
+        return p
