@@ -12,7 +12,7 @@ Truco Gaudério (baralho espanhol de 40 cartas, manilhas fixas, Envido e Flor) j
 
 1. **Clone o repositório:**
    ```bash
-   git clone git@github.com:JKrabbee/truco.git
+   git clone https://github.com/JKrabbee/truco.git
    cd truco
    ```
 
